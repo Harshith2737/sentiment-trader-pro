@@ -118,22 +118,29 @@ export default function AdvisorChat() {
     if (!user || creatingSession) return;
     setCreatingSession(true);
 
-    const { data, error } = await supabase
-      .from("chat_sessions")
-      .insert({ user_id: user.id, title: `Session ${new Date().toLocaleDateString()}` })
-      .select("id,title,created_at,updated_at")
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from("chat_sessions")
+        .insert({ user_id: user.id, title: `Session ${new Date().toLocaleDateString()}` })
+        .select("id,title,created_at,updated_at")
+        .single();
 
-    if (error) {
-      toast({ title: "Could not create session", description: error.message, variant: "destructive" });
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      setSessions((prev) => [data as ChatSession, ...prev]);
+      setActiveSessionId((data as ChatSession).id);
+      setMessages([]);
+    } catch (error) {
+      toast({
+        title: "Could not create session",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
       setCreatingSession(false);
-      return;
     }
-
-    setSessions((prev) => [data as ChatSession, ...prev]);
-    setActiveSessionId((data as ChatSession).id);
-    setMessages([]);
-    setCreatingSession(false);
   };
 
   const sendMessage = async (event: FormEvent) => {
@@ -170,6 +177,10 @@ export default function AdvisorChat() {
 
       if (error || data?.error) {
         throw new Error(error?.message || data?.error || "Advisor response failed");
+      }
+
+      if (!data?.content || typeof data.content !== "string") {
+        throw new Error("Advisor returned an invalid response");
       }
 
       const { error: insertAssistantError } = await supabase.from("chat_messages").insert({

@@ -35,10 +35,15 @@ serve(async (req) => {
   try {
     const { messages } = await req.json();
     const safeMessages = Array.isArray(messages)
-      ? messages.filter((message) => message?.role && message?.content).map((message) => ({
-          role: message.role,
-          content: String(message.content),
-        }))
+      ? messages
+          .filter((message) => {
+            const role = message?.role;
+            return (role === "user" || role === "assistant") && message?.content;
+          })
+          .map((message) => ({
+            role: message.role,
+            content: String(message.content).slice(0, 4000),
+          }))
       : [];
 
     const apiKey = Deno.env.get("REAL_LLM_API_KEY");
