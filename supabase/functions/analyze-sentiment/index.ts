@@ -12,7 +12,9 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const lovableKey = Deno.env.get("LOVABLE_API_KEY")!;
+    const llmKey = Deno.env.get("REAL_LLM_API_KEY")!;
+    const llmBaseUrl = Deno.env.get("REAL_LLM_BASE_URL") ?? "https://api.openai.com/v1";
+    const llmModel = Deno.env.get("REAL_LLM_MODEL") ?? "gpt-4o-mini";
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Get all stocks
@@ -39,14 +41,14 @@ Generate a realistic mock news headline and sentiment analysis. Return a JSON ob
 
 Return ONLY valid JSON, no markdown.`;
 
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const aiResponse = await fetch(`${llmBaseUrl}/chat/completions`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${lovableKey}`,
+          Authorization: `Bearer ${llmKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: llmModel,
           messages: [{ role: "user", content: prompt }],
         }),
       });

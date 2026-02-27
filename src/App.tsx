@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import Sentiment from "./pages/Sentiment";
 import Portfolio from "./pages/Portfolio";
 import ActivityLog from "./pages/ActivityLog";
+import AdvisorChat from "./pages/AdvisorChat";
 import DashboardLayout from "./components/DashboardLayout";
 import NotFound from "./pages/NotFound";
 
@@ -41,6 +42,7 @@ const App = () => (
             <Route path="/sentiment" element={<ProtectedRoute><Sentiment /></ProtectedRoute>} />
             <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />
             <Route path="/activity" element={<ProtectedRoute><ActivityLog /></ProtectedRoute>} />
+            <Route path="/advisor-chat" element={<ProtectedRoute><AdvisorChat /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
