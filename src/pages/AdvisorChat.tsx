@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { MessageSquarePlus, Send } from "lucide-react";
+import { Loader2, MessageSquarePlus, Send } from "lucide-react";
 
 interface ChatSession {
   id: string;
@@ -48,16 +48,22 @@ const deliverables = [
 export default function AdvisorChat() {
   const { user } = useAuth();
   const { toast } = useToast();
+
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState("");
   const [sending, setSending] = useState(false);
+  const [creatingSession, setCreatingSession] = useState(false);
 
-  const activeSession = useMemo(() => sessions.find((s) => s.id === activeSessionId) ?? null, [sessions, activeSessionId]);
+  const activeSession = useMemo(
+    () => sessions.find((session) => session.id === activeSessionId) ?? null,
+    [sessions, activeSessionId],
+  );
 
   const loadSessions = async () => {
-    if (!user) return;
+    if (!user) return [] as ChatSession[];
+
     const { data, error } = await supabase
       .from("chat_sessions")
       .select("id,title,created_at,updated_at")
@@ -66,7 +72,7 @@ export default function AdvisorChat() {
 
     if (error) {
       toast({ title: "Unable to load chat sessions", description: error.message, variant: "destructive" });
-      return;
+      return [];
     }
 
     const nextSessions = (data ?? []) as ChatSession[];
@@ -75,6 +81,8 @@ export default function AdvisorChat() {
     if (!activeSessionId && nextSessions.length > 0) {
       setActiveSessionId(nextSessions[0].id);
     }
+
+    return nextSessions;
   };
 
   const loadMessages = async (sessionId: string) => {
@@ -86,10 +94,12 @@ export default function AdvisorChat() {
 
     if (error) {
       toast({ title: "Unable to load messages", description: error.message, variant: "destructive" });
-      return;
+      return [] as ChatMessage[];
     }
 
-    setMessages((data ?? []) as ChatMessage[]);
+    const nextMessages = (data ?? []) as ChatMessage[];
+    setMessages(nextMessages);
+    return nextMessages;
   };
 
   useEffect(() => {
@@ -97,11 +107,17 @@ export default function AdvisorChat() {
   }, [user]);
 
   useEffect(() => {
-    if (activeSessionId) loadMessages(activeSessionId);
+    if (activeSessionId) {
+      loadMessages(activeSessionId);
+      return;
+    }
+    setMessages([]);
   }, [activeSessionId]);
 
   const createSession = async () => {
-    if (!user) return;
+    if (!user || creatingSession) return;
+    setCreatingSession(true);
+
     const { data, error } = await supabase
       .from("chat_sessions")
       .insert({ user_id: user.id, title: `Session ${new Date().toLocaleDateString()}` })
@@ -110,74 +126,75 @@ export default function AdvisorChat() {
 
     if (error) {
       toast({ title: "Could not create session", description: error.message, variant: "destructive" });
+      setCreatingSession(false);
       return;
     }
 
     setSessions((prev) => [data as ChatSession, ...prev]);
     setActiveSessionId((data as ChatSession).id);
     setMessages([]);
+    setCreatingSession(false);
   };
 
-  const sendMessage = async (e: FormEvent) => {
-    e.preventDefault();
+  const sendMessage = async (event: FormEvent) => {
+    event.preventDefault();
     if (!user || !activeSessionId || !prompt.trim() || sending) return;
-    setSending(true);
-
-    const userMessage = {
-      session_id: activeSessionId,
-      user_id: user.id,
-      role: "user" as const,
-      content: prompt.trim(),
-    };
-
-    const { error: insertUserError } = await supabase.from("chat_messages").insert(userMessage);
-    if (insertUserError) {
-      toast({ title: "Message failed", description: insertUserError.message, variant: "destructive" });
-      setSending(false);
-      return;
-    }
-
-    await supabase
-      .from("chat_sessions")
-      .update({ title: prompt.trim().slice(0, 45), updated_at: new Date().toISOString() })
-      .eq("id", activeSessionId);
 
     const sentPrompt = prompt.trim();
     setPrompt("");
-    await loadMessages(activeSessionId);
+    setSending(true);
 
-    const payloadMessages = [...messages, {
-      id: "temp",
-      session_id: activeSessionId,
-      role: "user" as const,
-      content: sentPrompt,
-      created_at: new Date().toISOString(),
-    }].map((m) => ({ role: m.role, content: m.content }));
+    try {
+      const { error: insertUserError } = await supabase.from("chat_messages").insert({
+        session_id: activeSessionId,
+        user_id: user.id,
+        role: "user",
+        content: sentPrompt,
+      });
 
-    const { data, error } = await supabase.functions.invoke("advisor-chat", {
-      body: { messages: payloadMessages },
-    });
+      if (insertUserError) {
+        throw new Error(insertUserError.message);
+      }
 
-    if (error || data?.error) {
-      toast({ title: "Advisor response failed", description: error?.message || data?.error || "Unknown error", variant: "destructive" });
+      await supabase
+        .from("chat_sessions")
+        .update({ title: sentPrompt.slice(0, 45) })
+        .eq("id", activeSessionId);
+
+      const conversation = await loadMessages(activeSessionId);
+      const payloadMessages = conversation.map((message) => ({ role: message.role, content: message.content }));
+
+      const { data, error } = await supabase.functions.invoke("advisor-chat", {
+        body: { messages: payloadMessages },
+      });
+
+      if (error || data?.error) {
+        throw new Error(error?.message || data?.error || "Advisor response failed");
+      }
+
+      const { error: insertAssistantError } = await supabase.from("chat_messages").insert({
+        session_id: activeSessionId,
+        user_id: user.id,
+        role: "assistant",
+        content: data.content,
+      });
+
+      if (insertAssistantError) {
+        throw new Error(insertAssistantError.message);
+      }
+
+      await loadSessions();
+      await loadMessages(activeSessionId);
+    } catch (error) {
+      toast({
+        title: "Advisor chat error",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+      setPrompt(sentPrompt);
+    } finally {
       setSending(false);
-      return;
     }
-
-    const { error: insertAiError } = await supabase.from("chat_messages").insert({
-      session_id: activeSessionId,
-      user_id: user.id,
-      role: "assistant",
-      content: data.content,
-    });
-
-    if (insertAiError) {
-      toast({ title: "Could not save advisor response", description: insertAiError.message, variant: "destructive" });
-    }
-
-    await loadSessions();
-    await loadMessages(activeSessionId);
-    setSending(false);
   };
 
   return (
@@ -197,24 +214,28 @@ export default function AdvisorChat() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-base">Sessions</CardTitle>
-            <Button size="sm" variant="outline" onClick={createSession}>
-              <MessageSquarePlus className="h-4 w-4 mr-1" />
+            <Button size="sm" variant="outline" onClick={createSession} disabled={creatingSession}>
+              {creatingSession ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <MessageSquarePlus className="h-4 w-4 mr-1" />}
               New
             </Button>
           </CardHeader>
           <CardContent className="space-y-2">
             {sessions.length === 0 ? (
               <p className="text-xs text-muted-foreground">Create your first one-on-one advisor session.</p>
-            ) : sessions.map((session) => (
-              <button
-                key={session.id}
-                className={`w-full text-left rounded-md p-2 text-sm transition-colors ${activeSessionId === session.id ? "bg-accent" : "hover:bg-muted"}`}
-                onClick={() => setActiveSessionId(session.id)}
-              >
-                <p className="font-medium truncate">{session.title}</p>
-                <p className="text-xs text-muted-foreground">{new Date(session.updated_at).toLocaleString()}</p>
-              </button>
-            ))}
+            ) : (
+              sessions.map((session) => (
+                <button
+                  key={session.id}
+                  className={`w-full text-left rounded-md p-2 text-sm transition-colors ${
+                    activeSessionId === session.id ? "bg-accent" : "hover:bg-muted"
+                  }`}
+                  onClick={() => setActiveSessionId(session.id)}
+                >
+                  <p className="font-medium truncate">{session.title}</p>
+                  <p className="text-xs text-muted-foreground">{new Date(session.updated_at).toLocaleString()}</p>
+                </button>
+              ))
+            )}
           </CardContent>
         </Card>
 
@@ -229,19 +250,33 @@ export default function AdvisorChat() {
             <ScrollArea className="h-[420px] rounded-md border p-3 mb-3">
               <div className="space-y-3">
                 {messages.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Ask how to integrate sentiment analysis, risk adjustment, and order drafting logic.</p>
-                ) : messages.map((message) => (
-                  <div key={message.id} className={`max-w-[85%] rounded-lg p-3 text-sm ${message.role === "user" ? "ml-auto bg-primary text-primary-foreground" : "bg-muted"}`}>
-                    {message.content}
-                  </div>
-                ))}
+                  <p className="text-sm text-muted-foreground">
+                    Ask how to integrate sentiment analysis, risk adjustment, and order drafting logic.
+                  </p>
+                ) : (
+                  messages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`max-w-[85%] rounded-lg p-3 text-sm ${
+                        message.role === "user" ? "ml-auto bg-primary text-primary-foreground" : "bg-muted"
+                      }`}
+                    >
+                      {message.content}
+                    </div>
+                  ))
+                )}
               </div>
             </ScrollArea>
 
             <form className="flex gap-2" onSubmit={sendMessage}>
-              <Input value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={activeSessionId ? "Ask the advisor..." : "Create a session first"} disabled={!activeSessionId || sending} />
+              <Input
+                value={prompt}
+                onChange={(event) => setPrompt(event.target.value)}
+                placeholder={activeSessionId ? "Ask the advisor..." : "Create a session first"}
+                disabled={!activeSessionId || sending}
+              />
               <Button type="submit" disabled={!activeSessionId || !prompt.trim() || sending}>
-                <Send className="h-4 w-4" />
+                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
             </form>
           </CardContent>
@@ -259,7 +294,9 @@ function ObjectiveCard({ title, items }: { title: string; items: string[] }) {
       </CardHeader>
       <CardContent className="space-y-2">
         {items.map((item) => (
-          <div key={item} className="text-sm text-muted-foreground">• {item}</div>
+          <div key={item} className="text-sm text-muted-foreground">
+            • {item}
+          </div>
         ))}
       </CardContent>
     </Card>

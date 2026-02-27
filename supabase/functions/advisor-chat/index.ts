@@ -34,6 +34,12 @@ serve(async (req) => {
 
   try {
     const { messages } = await req.json();
+    const safeMessages = Array.isArray(messages)
+      ? messages.filter((message) => message?.role && message?.content).map((message) => ({
+          role: message.role,
+          content: String(message.content),
+        }))
+      : [];
 
     const apiKey = Deno.env.get("REAL_LLM_API_KEY");
     const model = Deno.env.get("REAL_LLM_MODEL") ?? "gpt-4o-mini";
@@ -52,7 +58,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model,
         temperature: 0.3,
-        messages: [{ role: "system", content: systemPrompt }, ...(messages || [])],
+        messages: [{ role: "system", content: systemPrompt }, ...safeMessages],
       }),
     });
 
