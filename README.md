@@ -50,22 +50,30 @@ npm run dev
 bun run dev→ Open http://localhost:5173 (or the port shown in terminal)
 (Optional) Build for productionBashnpm run build
 # output appears in /dist folder
-
-Project Structure (Key Folders & Files)
-textsentiment-trader-pro/
-├── public/               # static assets (favicon, images)
+```text
+sentiment-trader-pro/
+├── public/                  # static assets (favicon, images, og-image.png, etc.)
 ├── src/
-│   ├── components/       # shadcn/ui + custom UI components
-│   ├── lib/              # utilities, helpers, constants
-│   ├── hooks/            # custom React hooks
-│   ├── pages/            # or app/ – main views/routes
-│   ├── App.tsx           # root component
-│   ├── main.tsx          # entry point
-│   └── index.css         # global styles + Tailwind + theme variables
+│   ├── components/          # shadcn/ui components + custom ones (buttons, cards, charts...)
+│   ├── lib/                 # utilities, helpers, constants, API helpers
+│   ├── hooks/               # custom React hooks (e.g., useSentiment, usePortfolio)
+│   ├── pages/               # or app/ – main views/routes (Dashboard, Analysis, etc.)
+│   ├── App.tsx              # root component (layout wrapper)
+│   ├── main.tsx             # entry point (ReactDOM.render / createRoot)
+│   └── index.css            # global styles + Tailwind directives + theme variables
+├── .env                     # environment variables (API keys, etc.)
+├── .gitignore
+├── components.json          # shadcn/ui config
+├── package.json
+├── package-lock.json        # or bun.lockb / pnpm-lock.yaml
+├── postcss.config.js
 ├── tailwind.config.ts
 ├── tsconfig.json
+├── tsconfig.app.json
+├── tsconfig.node.json
 ├── vite.config.ts
-└── package.json
+└── vitest.config.ts         # if using Vitest for testing
+
 Customization & Extension Points
 
 Theme colors: Edit CSS variables in src/index.css (--bullish, --bearish, --neutral, --primary, etc.)
