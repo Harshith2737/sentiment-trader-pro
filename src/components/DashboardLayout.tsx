@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
-  TrendingUp, BarChart3, Activity, Briefcase, LogOut, Moon, Sun,
+  TrendingUp, BarChart3, Activity, Briefcase, LogOut, Moon, Sun, MessageCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -12,6 +12,7 @@ const navItems = [
   { path: "/sentiment", label: "Sentiment", icon: Activity },
   { path: "/portfolio", label: "Portfolio", icon: Briefcase },
   { path: "/activity", label: "Agent Log", icon: TrendingUp },
+  { path: "/advisor-chat", label: "1:1 Advisor Chat", icon: MessageCircle },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
